@@ -1,0 +1,36 @@
+{
+    "name": "dzkit/dzkit-php",
+    "description": "Algerian developer toolkit: CCP/RIP keys, NIF/NIS, phone numbers, licence plates (69 wilayas), DZD amounts in words (French & Arabic), IRG/CNAS payroll.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["algeria", "algerie", "dz", "rip", "ccp", "algerie-poste", "nif", "nis", "phone", "wilaya", "licence-plate", "irg", "cnas", "payroll", "amount-in-words", "arabic"],
+    "homepage": "https://github.com/dzkit/dzkit-php",
+    "support": {
+        "issues": "https://github.com/dzkit/dzkit-php/issues",
+        "source": "https://github.com/dzkit/dzkit-php"
+    },
+    "authors": [
+        { "name": "Siroukane", "homepage": "https://github.com/DrSiroukane" }
+    ],
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": { "Dzkit\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Dzkit\\Tests\\": "tests/" }
+    },
+    "scripts": {
+        "generate": "php bin/generate",
+        "generate:check": "php bin/generate --check",
+        "test": "phpunit",
+        "spec:update": "php bin/update-spec"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A value is wrong or a rule changed (IRG, SNMG, wilayas, phone blocks…)
+    url: https://github.com/dzkit/dzkit-spec/issues/new/choose
+    about: Values come from dzkit-spec, shared by every dzkit package. Report them there, with the official source, so every language gets the fix.

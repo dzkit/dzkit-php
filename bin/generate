@@ -1,0 +1,212 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Generates src/Generated/SpecData.php from spec/dzkit-spec.json, the pinned release of
+ * dzkit-spec. The values come from the spec; the logic stays in src/.
+ *
+ *   php bin/generate           write the file
+ *   php bin/generate --check   fail if the file is missing or out of date (used in CI)
+ */
+
+const SUPPORTED_SCHEMA = 3;
+
+$root = dirname(__DIR__);
+$out = $root . '/src/Generated/SpecData.php';
+$check = in_array('--check', $argv, true);
+
+function fail(string $message): never
+{
+    fwrite(STDERR, "✗ {$message}\n");
+    exit(1);
+}
+
+$spec = json_decode((string) file_get_contents($root . '/spec/dzkit-spec.json'), true, 512, JSON_THROW_ON_ERROR);
+if ($spec['schema_version'] !== SUPPORTED_SCHEMA) {
+    fail("dzkit-spec {$spec['version']} uses format {$spec['schema_version']}; this generator understands " . SUPPORTED_SCHEMA . '.');
+}
+
+function rule(array $spec, string $id): array
+{
+    foreach ($spec['rules'] as $r) {
+        if ($r['id'] === $id) {
+            return $r;
+        }
+    }
+    fail("dzkit-spec has no rule \"{$id}\".");
+}
+
+/** The version still in force (the one without an end date). */
+function current_version(array $spec, string $id): array
+{
+    $open = array_values(array_filter(rule($spec, $id)['versions'], fn ($v) => $v['valid_to'] === null));
+    if (count($open) !== 1) {
+        fail("Rule \"{$id}\" should have exactly one open-ended version, found " . count($open) . '.');
+    }
+    return $open[0];
+}
+
+function sources(array $version): string
+{
+    return implode(', ', array_map(fn ($s) => is_string($s) ? $s : $s['source'], $version['sources']));
+}
+
+/** PHP source for a value, on one line. */
+function php(mixed $v): string
+{
+    if (is_array($v)) {
+        $list = array_is_list($v);
+        $items = [];
+        foreach ($v as $k => $x) {
+            $items[] = ($list ? '' : php($k) . ' => ') . php($x);
+        }
+        return '[' . implode(', ', $items) . ']';
+    }
+    if (is_string($v)) {
+        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $v) . "'";
+    }
+    if ($v === null) {
+        return 'null';
+    }
+    if (is_bool($v)) {
+        return $v ? 'true' : 'false';
+    }
+    if (is_float($v)) {
+        return json_encode($v);
+    }
+    return (string) $v;
+}
+
+$wilayas = current_version($spec, 'administrative.wilayas');
+$plates = rule($spec, 'vehicles.plates');
+$platesNow = current_version($spec, 'vehicles.plates');
+$phone = current_version($spec, 'telecom.phone');
+$ccp = current_version($spec, 'banking.ccp-rip');
+$nif = current_version($spec, 'business.nif');
+$nis = current_version($spec, 'business.nis');
+$irg = current_version($spec, 'payroll.irg-salary');
+$cnas = current_version($spec, 'payroll.cnas');
+
+// Plates: the day the widest range of wilaya codes starts (59–69 from 1 January 2027).
+$ranges = array_map(fn ($v) => ['from' => $v['valid_from'], 'to' => $v['data']['wilaya_codes']['to']], $plates['versions']);
+usort($ranges, fn ($a, $b) => $a['to'] <=> $b['to']);
+$widest = end($ranges);
+$before = count($ranges) > 1 ? $ranges[count($ranges) - 2]['to'] : 0;
+
+$smoothing = function (string $regime) use ($irg): array {
+    foreach ($irg['data']['smoothing'] as $s) {
+        if (in_array($regime, $s['regimes'], true)) {
+            return $s;
+        }
+    }
+    fail("No IRG smoothing for regime \"{$regime}\".");
+};
+$salaried = $smoothing('salaried');
+$favourable = $smoothing('retired');
+if (!in_array('retired', $smoothing('disabled')['regimes'], true)) {
+    fail('IRG: retired and disabled workers are expected to share one smoothing formula.');
+}
+if ($irg['data']['rounding']['mode'] !== 'floor') {
+    fail("IRG: unsupported rounding mode \"{$irg['data']['rounding']['mode']}\".");
+}
+
+$L = [];
+$w = function (string $line = '') use (&$L): void {
+    $L[] = $line;
+};
+
+$w('<?php');
+$w();
+$w('// Generated from dzkit-spec by bin/generate. Do not edit by hand: update spec/ and run');
+$w('// `php bin/generate`. Each value links back to a rule in https://github.com/dzkit/dzkit-spec,');
+$w('// where its official sources, verification level and validity dates are recorded.');
+$w();
+$w('declare(strict_types=1);');
+$w();
+$w('namespace Dzkit\Generated;');
+$w();
+$w('/** @internal */');
+$w('final class SpecData');
+$w('{');
+$w('    public const SPEC_VERSION = ' . php($spec['version']) . ';');
+$w();
+$w('    // administrative.wilayas (valid from ' . $wilayas['valid_from'] . '; sources: ' . sources($wilayas) . ')');
+$w('    public const WILAYAS_VALID_FROM = ' . php($wilayas['valid_from']) . ';');
+$w('    public const WILAYAS = [');
+foreach ($wilayas['data'] as $x) {
+    $entry = ['code' => $x['code'], 'name' => $x['name_fr'], 'name_ar' => $x['name_ar']];
+    if (isset($x['parent'])) {
+        $entry['parent'] = $x['parent'];
+        $entry['valid_from'] = $x['valid_from'];
+    }
+    $w('        ' . php($entry) . ',');
+}
+$w('    ];');
+$w();
+$w('    // vehicles.plates (sources: ' . sources($platesNow) . ')');
+$w('    public const PLATE_WILAYA_MAX_BEFORE = ' . $before . ';');
+$w('    public const PLATE_WILAYA_MAX = ' . $widest['to'] . ';');
+$w('    public const PLATE_NEW_WILAYAS_FROM = ' . php($widest['from']) . ';');
+$w('    public const PLATE_SERIAL_DISPLAY_DIGITS = ' . $platesNow['data']['serial']['display_digits'] . ';');
+$w('    public const PLATE_CATEGORIES = [');
+foreach ($platesNow['data']['categories'] as $c) {
+    $w('        ' . $c['code'] . ' => ' . php(['fr' => $c['fr'], 'ar' => $c['ar'], 'en' => $c['en']]) . ',');
+}
+$w('    ];');
+$w();
+$w('    // telecom.phone (valid from ' . $phone['valid_from'] . '; sources: ' . sources($phone) . ')');
+$w('    public const PHONE_COUNTRY_CODE = ' . php($phone['data']['country_code']) . ';');
+$ops = [];
+foreach ($phone['data']['operators'] as $o) {
+    $ops[$o['first_digit']] = $o['operator'];
+}
+$w('    public const PHONE_OPERATORS = ' . php($ops) . ';');
+$w('    public const PHONE_MOBILE_BLOCKS = ' . php($phone['data']['mobile_blocks']) . ';');
+$service = $phone['data']['allocated_blocks']['service'];
+$w('    public const PHONE_FREEPHONE_BLOCKS = ' . php(array_values(array_map(fn ($b) => $b['range'], array_filter($service, fn ($b) => $b['use'] === 'freephone')))) . ';');
+$w('    public const PHONE_SERVICE_BLOCKS = ' . php(array_map(fn ($b) => $b['range'], $service)) . ';');
+$w('    public const PHONE_VOIP_BLOCKS = ' . php(array_map(fn ($b) => $b['range'], $phone['data']['allocated_blocks']['voip'])) . ';');
+$w();
+$w('    // banking.ccp-rip (sources: ' . sources($ccp) . ')');
+$w('    public const RIP_BANK_CODE = ' . php($ccp['data']['rip']['bank_code']) . ';');
+$w('    public const RIP_BRANCH_CODE = ' . php($ccp['data']['rip']['branch_code']) . ';');
+$w('    public const RIP_ACCOUNT_DIGITS = ' . $ccp['data']['rip']['account_digits'] . ';');
+$w('    public const RIP_KEY = ' . php($ccp['data']['rip']['key']) . ';');
+$w('    public const CCP_KEY_WEIGHTS_FROM_RIGHT = ' . php($ccp['data']['ccp_key']['weights_from_right']) . ';');
+$w('    public const CCP_KEY_MODULUS = ' . $ccp['data']['ccp_key']['modulus'] . ';');
+$w();
+$w('    // business.nif (status ' . $nif['status'] . '; sources: ' . sources($nif) . ')');
+$w('    public const NIF_LENGTHS = ' . php($nif['data']['lengths']) . ';');
+$w('    // business.nis (status ' . $nis['status'] . '; sources: ' . sources($nis) . ')');
+$w('    public const NIS_LENGTHS = ' . php($nis['data']['lengths']) . ';');
+$w();
+$w('    // payroll.irg-salary (valid from ' . $irg['valid_from'] . '; sources: ' . sources($irg) . ')');
+$w('    public const IRG_VALID_FROM = ' . php($irg['valid_from']) . ';');
+$w('    public const IRG_REGIMES = ' . php(array_keys($irg['data']['regimes'])) . ';');
+$w('    /** Monthly brackets: [upper bound in DA or null for no limit, rate]. */');
+$w('    public const IRG_MONTHLY_BRACKETS = ' . php(array_map(fn ($b) => [$b['up_to'], $b['rate']], $irg['data']['brackets'])) . ';');
+$w('    public const IRG_EXEMPTION_THRESHOLD = ' . php($irg['data']['exemption_threshold']) . ';');
+$w('    public const IRG_ABATEMENT = ' . php($irg['data']['abatement']) . ';');
+$w('    public const IRG_SALARIED_SMOOTHING = ' . php(['below' => $salaried['below'], 'multiplier' => $salaried['multiplier'], 'subtract' => $salaried['subtract']]) . ';');
+$w('    public const IRG_FAVOURABLE_SMOOTHING = ' . php(['below' => $favourable['below'], 'multiplier' => $favourable['multiplier'], 'subtract' => $favourable['subtract']]) . ';');
+$w('    public const IRG_ROUNDING_STEP = ' . php($irg['data']['rounding']['step']) . ';');
+$w();
+$w('    // payroll.cnas (sources: ' . sources($cnas) . ')');
+$w('    public const CNAS_EMPLOYEE_RATE = ' . php($cnas['data']['employee']) . ';');
+$w('    public const CNAS_EMPLOYER_RATE = ' . php($cnas['data']['employer']) . ';');
+$w('    public const CNAS_SOCIAL_SERVICES_RATE = ' . php($cnas['data']['social_services']) . ';');
+$w('}');
+
+$content = implode("\n", $L) . "\n";
+
+if ($check) {
+    if (!is_file($out) || file_get_contents($out) !== $content) {
+        fail('src/Generated/SpecData.php is out of date. Run `php bin/generate` and commit the result.');
+    }
+    echo "✓ src/Generated/SpecData.php matches dzkit-spec {$spec['version']}\n";
+} else {
+    file_put_contents($out, $content);
+    echo "✓ wrote src/Generated/SpecData.php from dzkit-spec {$spec['version']}\n";
+}

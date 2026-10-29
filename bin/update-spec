@@ -1,0 +1,52 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Pins another release of dzkit-spec: downloads its files into spec/ and checks them
+ * against the release's SHA256SUMS.
+ *
+ *   php bin/update-spec v0.5.0
+ *
+ * Then run `php bin/generate`, the tests, and review the diff (see CONTRIBUTING.md).
+ */
+
+$tag = $argv[1] ?? '';
+if (!preg_match('/^v[0-9]+\.[0-9]+\.[0-9]+$/', $tag)) {
+    fwrite(STDERR, "Usage: php bin/update-spec vX.Y.Z\n");
+    exit(2);
+}
+
+$base = "https://github.com/dzkit/dzkit-spec/releases/download/{$tag}";
+$dir = dirname(__DIR__) . '/spec';
+$context = stream_context_create(['http' => ['follow_location' => 1, 'timeout' => 60, 'user_agent' => 'dzkit-php update-spec']]);
+
+$files = [];
+foreach (['SHA256SUMS', 'dzkit-spec.json', 'vectors.json'] as $name) {
+    $body = @file_get_contents("{$base}/{$name}", false, $context);
+    if ($body === false) {
+        fwrite(STDERR, "✗ Could not download {$name} from {$base}\n");
+        exit(1);
+    }
+    $files[$name] = $body;
+}
+
+foreach (explode("\n", trim($files['SHA256SUMS'])) as $line) {
+    [$hash, $name] = preg_split('/\s+\*?/', trim($line), 2);
+    if (!isset($files[$name]) || hash('sha256', $files[$name]) !== $hash) {
+        fwrite(STDERR, "✗ {$name} doesn't match SHA256SUMS: not written.\n");
+        exit(1);
+    }
+}
+
+$version = json_decode($files['dzkit-spec.json'], true, 512, JSON_THROW_ON_ERROR)['version'];
+if ("v{$version}" !== $tag) {
+    fwrite(STDERR, "✗ The files say version {$version}, not {$tag}.\n");
+    exit(1);
+}
+
+foreach ($files as $name => $body) {
+    file_put_contents("{$dir}/{$name}", $body);
+}
+echo "✓ spec/ now holds dzkit-spec {$version} (checksums verified). Next: php bin/generate, then the tests.\n";
