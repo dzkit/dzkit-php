@@ -16,6 +16,8 @@
 
 يعمل على PHP 8.1 فما فوق، بدون أي تبعيات. نفس القواعد ونفس النتائج مثل [dzkit لـ JavaScript](https://github.com/dzkit/dzkit-js): كلاهما يتبع [dzkit-spec](https://github.com/dzkit/dzkit-spec) وينجح في حالات الاختبار المشتركة الـ 339.
 
+**لمعرفة ما يقدمه:** جرّب كل الدوال في [صفحة التجربة على الإنترنت](https://dzkit.github.io/dzkit-js/). تستعمل هذه الصفحة حزمة JavaScript، التي تعطي نفس نتائج هذه الحزمة.
+
 </div>
 
 ```bash

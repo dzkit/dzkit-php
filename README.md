@@ -18,6 +18,8 @@ The small things every Algerian app ends up rewriting, tested once and shared:
 
 PHP 8.1+, no dependencies. The same rules and the same results as [dzkit for JavaScript](https://github.com/dzkit/dzkit-js): both follow [dzkit-spec](https://github.com/dzkit/dzkit-spec) and pass all of its 339 shared test cases.
 
+**See what it does:** try every function in the [online playground](https://dzkit.github.io/dzkit-js/). It runs the JavaScript package, which gives the same results as this one.
+
 ```bash
 composer require dzkit/dzkit-php
 ```
