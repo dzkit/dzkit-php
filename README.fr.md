@@ -14,6 +14,8 @@ Les petites fonctions que chaque application algérienne finit par réécrire, t
 
 PHP 8.1+, aucune dépendance. Les mêmes règles et les mêmes résultats que [dzkit pour JavaScript](https://github.com/dzkit/dzkit-js) : les deux suivent [dzkit-spec](https://github.com/dzkit/dzkit-spec) et passent ses 339 cas de test communs.
 
+**Voir ce qu'il fait :** essayez chaque fonction dans le [playground en ligne](https://dzkit.github.io/dzkit-js/). Il utilise le paquet JavaScript, qui donne les mêmes résultats que celui-ci.
+
 ```bash
 composer require dzkit/dzkit-php
 ```
