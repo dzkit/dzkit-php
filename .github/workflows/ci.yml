@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Every PHP version the package supports.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+      - name: Check the pinned dzkit-spec files against their checksums
+        run: cd spec && sha256sum -c SHA256SUMS
+      - name: Check the generated data matches the pinned dzkit-spec
+        run: php bin/generate --check
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: vendor/bin/phpunit
+
+  # The package must install and work with no dev dependencies, as users get it.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.1'
+          coverage: none
+          tools: composer:v2
+      - name: Install as a dependency of an empty project, and use it
+        run: |
+          mkdir /tmp/app && cd /tmp/app
+          composer init --no-interaction --name=test/app --stability=dev
+          composer config repositories.dzkit path "$GITHUB_WORKSPACE"
+          composer require --no-interaction "dzkit/dzkit-php:*@dev"
+          php -r 'require "vendor/autoload.php";
+            if (Dzkit\Rip::fromCcp("23115007") !== "00799999002311500797") exit(1);
+            if (Dzkit\Words::amountAr(2000) !== "ألفا دينار جزائري") exit(1);
+            echo "dzkit-php ", Dzkit\Dzkit::SPEC_VERSION, " works\n";'
